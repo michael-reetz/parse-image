@@ -9,8 +9,9 @@
 require 'src/Singleton.php';
 require 'src/Debug.php';
 require 'src/ParseImage.php';
+require 'src/Candidate.php';
 
-//\MichaelReetz\Debug::getInstance()->verbose();
+\MichaelReetz\Debug::getInstance()->verbose()->verbose()->verbose();
 
 $parseImage = new MichaelReetz\ParseImage();
 

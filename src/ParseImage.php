@@ -99,12 +99,12 @@ class ParseImage
 				continue;
 			}
 
-			// speculate that a left-oversize character might be here
-			$res = $this->testAll($image, $x, true);
-			if ($res !== false) {
-				$result .= $res;
-				continue;
-			}
+//			// speculate that a left-oversize character might be here
+//			$res = $this->testAll($image, $x, true);
+//			if ($res !== false) {
+//				$result .= $res;
+//				continue;
+//			}
 			throw new \Exception("not found at pos $x of file $filename");
 		}
 		$this->debug->echoString("File $filename -> $result \n");
@@ -114,20 +114,69 @@ class ParseImage
 	/**
 	 * @param resource $image
 	 * @param int $x
-	 * @param bool $nextBleedThrough
+	 * @param Candidate[] $preList
 	 * @return bool|string
+	 * @throws \Exception
 	 */
-	private function testAll($image, &$x, $nextBleedThrough = false)
+	private function testAll($image, &$x, $preList = [])
 	{
+		$candidates = [];
+		$this->debug->echoString("try to find from $x with pre: '" . Candidate::out($preList) . "' \n", 3);
+		sleep(1);
+		$testX = $x;
+		foreach ($preList as $pre) {
+			$testX += $pre->width;
+		}
+
 		foreach ($this->characters as $testWidth => $letters) {
 			foreach ($letters as $char => $testImage) {
-				$this->debug->echoString("$char ", 3);
-				if ($this->test($image, $testImage, $x, $testWidth, $nextBleedThrough)) {
-					$this->debug->echoString("Found at $x ", 3);
-					$x += $testWidth;
-					$this->debug->echoString("continue $x \n", 3);
-					return $char;
+				$this->debug->echoString("$char", 3);
+				$score = $this->test($image, $testImage, $testX, $testWidth);
+				$this->debug->echoString("=$score ", 3);
+				if ($score > 0.92) {
+					$candidates[] = new Candidate(
+						$char, $testWidth
+					);
 				}
+			}
+		}
+
+
+		$this->debug->varDump($candidates, 3);
+		sleep(5);
+
+		foreach ($candidates as $candidate) {
+			$testX0 = $testX + $candidate->width;
+			$testX1 = $testX + $candidate->width - 1;
+			$testX2 = $testX + $candidate->width - 2;
+
+			$preListAdd = array_merge($preList, [$candidate]);
+
+			$res0 = $this->testAll($image, $testX0, $preListAdd);
+			$res1 = $this->testAll($image, $testX1, $preListAdd);
+			$res2 = $this->testAll($image, $testX2, $preListAdd);
+
+			if (
+				$res0 !== false && $res1 !== false
+				||
+				$res1 !== false && $res2 !== false
+				||
+				$res0 !== false && $res2 !== false
+			) {
+				throw new \Exception('too much ambiguity for me');
+			}
+			switch(true) {
+				case $res0 !== false:
+					$x = $res0;
+					return $candidate->character . $res0;
+				case $res1 !== false:
+					$x = $res1;
+					return $candidate->character . $res1;
+				case $res2 !== false:
+					$x = $res2;
+					return $candidate->character . $res2;
+				default :
+					return false;
 			}
 		}
 		return false;
@@ -140,28 +189,23 @@ class ParseImage
 	 * @param resource $testImage
 	 * @param integer $xStart
 	 * @param integer $width
-	 * @param bool $nextBleedThrough
-	 * @return bool
+	 * @return float
 	 */
-	public function test($image, $testImage, $xStart, $width, $nextBleedThrough = false)
+	public function test($image, $testImage, $xStart, $width)
 	{
+		$cnt = 0;
+		$match = 0;
 		for ($x = 0; $x < $width; $x++) {
 			for ($y = 0; $y < $this->height; $y++) {
-				$mightBeBleedTrough = ($x == $width - 1) && ($y == $this->height - 2);
+				$cnt++;
 				$a = imagecolorat($image, $x + $xStart, $y);
 				$b = imagecolorat($testImage, $x, $y);
-				if ($a != $b) {
-					if (
-						!$nextBleedThrough
-						||
-						!$mightBeBleedTrough
-					) {
-						return false;
-					}
+				if ($a == $b) {
+					$match++;
 				}
 			}
 		}
-		return true;
+		return $match / $cnt;
 	}
 
 	/**
