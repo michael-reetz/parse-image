@@ -20,7 +20,13 @@ class ParseImage
 	private $debug;
 
 	/** @var resource */
-	private $image = null;
+	private $imageToParse = null;
+
+	/** @var resource */
+	private $imageForComparison = null;
+
+	/** @var integer */
+	private $backgroundColor = null;
 
 	/** @var int */
 	private $width = 0;
@@ -79,82 +85,112 @@ class ParseImage
 		$this->characters[$width][$character] = $image;
 	}
 
+	private $lastEcho = 0;
+
 	/**
 	 * @param Character[] $characters
+	 * @param int $nested
 	 * @return Character[]
 	 */
-	private function testCharacters($characters)
+	private function testCharacters($characters, $nested = 0)
 	{
+		$nested++;
+		if ($this->lastEcho + 0.2 < microtime(true)) {
+			$kette = Character::toString($characters);
+			echo "Aktuell: '${kette}'              \r";
+			$this->lastEcho = microtime(true);
+		}
+
 		// berechne aktuellen score und falls zu schlecht durect return
 		$errorPixels = $this->calcErrorPixel($characters);
-		if ($errorPixels > 10) {
-			$kette = Character::toString($characters);
-			echo "Anzahl Fehler: ${errorPixels}, breche ab bei Kette '${kette}'\n";
+		if ($errorPixels > 5) {
 			return [];
 		}
 
-		$length = Character::calcWidth($characters);
-		if ($this->isEmpty($this->image, $length)) {
-			$characters[] = new Character('',1);
-			return $this->testCharacters($characters);
-		} else {
+		if ($nested > 80) {
+			echo "ARRRRGGGGG $nested 80 überschritten!";
+			echo "\t ERRORPIXELS : ${errorPixels}\n";
+			echo "\t MaxX : " . $this->maxX . "\n";
+			echo "\t Width : " .$this->width . "\n";
+			exit;
+		}
 
-			$testing = [];
-			// aber nicht falls der letzte Character bereits ein rückschritt war
-			if (empty($characters) || end($characters)->character != '') {
-				// wenn ($length -1) not isEmpty dann auch -1 testen und wenn ($length -2) not isEmpty dann auch -2 testen
-				if (!$this->isEmpty($this->image, $length-1)) {
+
+		if ($this->maxX >= $this->width-1 && $errorPixels==0) {
+			echo "FERTIG!\n";
+			return $characters;
+		}
+
+
+
+
+		$length = Character::calcWidth($characters);
+		if ($this->isEmpty($this->imageToParse, $length)) {
+			$more = 0;
+			while (true) {
+				if ($length + $more > $this->width) {
+					return $characters;
+				}
+				if (! $this->isEmpty($this->imageToParse, $length + $more + 1)){
+					$characters[] = new Character('',$more + 1);
+					return $this->testCharacters($characters, $nested);
+				}
+				$more++;
+			}
+		}
+
+		$testing = [];
+		// testen jedes Buchstaben
+		foreach ($this->characters as $testWidth => $letters) {
+			foreach ($letters as $char => $testImage) {
+
+				$character = new Character($char, $testWidth);
+
+				if ($testWidth > 2) {
+					$test = $characters;
+					$test[] = new Character('',-2);
+					$test[] = $character;
+					$testing[] = $this->testCharacters($test);
+				}
+
+				if ($testWidth > 1) {
 					$test = $characters;
 					$test[] = new Character('',-1);
-					$testing[] = $this->testCharacters($test);
+					$test[] = $character;
+					$testing[] = $this->testCharacters($test, $nested);
 				}
-//				if (!$this->isEmpty($this->image, $length-2)) {
-//					$test = $characters;
-//					$test[] = new Character('',-2);
-//					$testing[] = $this->testCharacters($test);
-//				}
-			}
-			// testen jedes Buchstaben
-			foreach ($this->characters as $testWidth => $letters) {
-				foreach ($letters as $char => $testImage) {
 
-					if (
-						!empty($characters)
-						&&
-						end($characters)->width < 0
-						&&
-						$testWidth <= abs(end($characters)->width)
-					) {
-						// zeichen ignorieren da durch backstep und zeichenbreite
-						// kein weiterkommen stattfindet
-						continue;
-					}
-
-					$test = $characters;
-					$test[] = new Character($char, $testWidth);
-					$testing[] = $this->testCharacters($test);
-				}
+				$test = $characters;
+				$test[] = $character;
+				$testing[] = $this->testCharacters($test, $nested);
 			}
-			// alle verworfenen Ketten rauswerfen
-			$testing = array_filter($testing, function($a){return !empty($a);});
-			// dieses Array dürfe nur noch länge 1 haben????
-			if (empty($testing)){
-				echo "keine gültigen Ketten übrig\n";
-				return [];
+		}
+		// alle verworfenen Ketten rauswerfen
+		$testing = array_filter($testing, function($a){return !empty($a);});
+		// dieses Array dürfe nur noch länge 1 haben????
+		if (empty($testing)){
+//			echo "keine gültigen Ketten übrig\n";
+			return [];
+		} else {
+			$count = count($testing);
+			if ($count == 1) {
+//				echo "so soll es sein, Rückgabe einer eindeutigen Kette bis hier\n";
+				return end($testing);
 			} else {
-				$count = count($testing);
-				if ($count == 1) {
-					echo "so soll es sein, Rückgabe einer eindeutigen Kette bis hier\n";
-					return end($testing);
-				} else {
-					echo "mehrere Ketten möglich\n";
-					$nr = 1;
-					foreach($testing as $test) {
-						$kette = Character::toString($test);
-						echo "breche ab bei Kette ${nr}/${count}: '${kette}'\n";
+				echo "mehrere Ketten möglich\n";
+				$nr = 1;
+				foreach($testing as $test) {
+					$kette = Character::toString($test);
+					echo "breche ab bei Kette ${nr}/${count}: '${kette}'\n";
+					$calcErrorPixel = $this->calcErrorPixel($test);
+					echo "\tERRORLEVEL : " . $calcErrorPixel ."\n";
+					if ($calcErrorPixel == 0){
+						echo "YAY\n";
+						return $test;
 					}
-					return [];
+					$nr++;
 				}
+				return [];
 			}
 		}
 	}
@@ -163,87 +199,84 @@ class ParseImage
 
 	// analyse kann dann nur ab dem letztem positiven Space beginnen
 
+	private $maxX = 0;
+
+
 	/**
 	 * @param Character[] $characters
+	 * @param bool $complete
 	 * @return integer
 	 */
-	private function calcErrorPixel($characters)
+	private function calcErrorPixel($characters, $complete = false)
 	{
-		echo "teste : " . Character::toString($characters).PHP_EOL;
-
+//		echo "teste : " . Character::toString($characters).PHP_EOL;
 
 		if (empty($characters) || Character::toString($characters) == '') {
 			return 0;
 		}
 
-		if ($this->countValidatedCharacters > 0 ) {
-			$skipX = Character::calcWidth(
-				array_slice($characters,0, $this->countValidatedCharacters)
-			);
+		if (!$complete) {
+			if ($this->countValidatedCharacters > 0 ) {
+				$skipX = Character::calcWidth(
+					array_slice($characters,0, $this->countValidatedCharacters)
+				);
+			} else {
+				$skipX = 0;
+			}
 		} else {
 			$skipX = 0;
 		}
 
 
-		// TODO Optimiere, das nicht für jeden Vergleich ein neues Bild angelegt werden muss
-		// TODO sondern am besten gleich zu anfang ein identisch großes zum parse Bild anlegen
-		// TODO welches immer wieder hier verwendet wird
 		$length = Character::calcWidth($characters);
-
-//		var_dump($length, $this->height);
 		if ($length <= 0 ){
 			exit;
 		}
+		imagefilledrectangle(
+			$this->imageForComparison,
+			$skipX, 0,
+			$this->maxX, $this->height - 1,
+			$this->backgroundColor
+		);
 
-
-		$img = imagecreatetruecolor($length, $this->height);
-		$bg = imagecolorallocate ( $img, 255, 255, 255 );
-		imagefilledrectangle($img,0,0,$length - 1, $this->height - 1, $bg);
-
-
-
-		$offset = 0;
-
+		$offsetX = 0;
 		foreach ($characters as $index => $character) {
 			// nur den Vergleichteil malen
-			if ($index >= $this->countValidatedCharacters) {
+			if ($complete || $index >= $this->countValidatedCharacters) {
 				if ($character->character != '') {
 					$characterImage = $this->characters[$character->width][$character->character];
 					for ($x = 0; $x < $character->width; $x++) {
+						$setX = $x + $offsetX;
+						if ($setX < 0 || $setX >= $this->width) {
+							continue;
+						}
+						$this->maxX = $setX;
 						for ($y = 0; $y < $this->height; $y++) {
-							$setX = $x + $offset;
-							if ($setX < 0 || $setX >= $length) {
-								continue;
-							}
 							$color = imagecolorat($characterImage, $x, $y);
-							imagesetpixel($img, $setX, $y, $color);
+							if ($color != $this->backgroundColor) {
+								//$a = imagecolorat($this->imageForComparison, $x, $y);
+								imagesetpixel($this->imageForComparison, $setX, $y, $color);
+							}
 						}
 					}
 				}
 			}
-			$offset += $character->width;
+			$offsetX += $character->width;
 		}
-		//imagepng($img, './testausgabe.png');
+
+
+//		imagepng($this->imageForComparison, './testausgabe.png');
+//		exit;
+
+
 		$errors = 0;
-		for($x = 0; $x < $length; $x++) {
-			if ($x >= $this->width){
-				continue ;
-			}
-			if ($x < $skipX) {
-				continue;
-			}
+		for($x = $skipX; $x <= $this->maxX; $x++) {
 			for($y = 0; $y < $this->height; $y++) {
-				$a = imagecolorat($img, $x, $y);
-				$b = imagecolorat($this->image, $x, $y);
+				$a = imagecolorat($this->imageForComparison, $x, $y);
+				$b = imagecolorat($this->imageToParse, $x, $y);
 				if ($a != $b) {
 					$errors++;
 				}
-				$setX = $x + $offset;
-				if ($setX < 0 || $setX >= $length) {
-					continue;
-				}
-				$color = imagecolorat($characterImage, $x, $y);
-				imagesetpixel($img, $setX , $y, $color);
 			}
 		}
 
@@ -302,16 +335,22 @@ class ParseImage
 	public function read($filename)
 	{
 		$this->debug->echoString("Parse File $filename \n", 2);
-		$this->image = imagecreatefrompng($filename);
-		$this->width = imagesx($this->image);
-		//$this->>test();
+		$this->imageToParse = imagecreatefrompng($filename);
+		$this->width = imagesx($this->imageToParse);
+		$height = imagesy($this->imageToParse);
+
+
+		$this->imageForComparison = imagecreatetruecolor($this->width, $height);
+		$this->backgroundColor = imagecolorallocate ( $this->imageForComparison, 255, 255, 255 );
+		imagefilledrectangle($this->imageForComparison,0,0,$this->width - 1, $this->height - 1, $this->backgroundColor);
 
 		$this->countValidatedCharacters = 0;
+		$this->maxX = 0;
 
 		/** @var Character[] $characters */
-		$characters = $this->testCharacters([new Character('', -1)]);
-		echo Character::toString($characters);
-		exit;
+		$characters = $this->testCharacters([]);
+		echo "\n" . Character::toString($characters)."\n";
+//		exit;
 	}
 
 	/**
@@ -340,3 +379,4 @@ class ParseImage
 
 
 
+            
