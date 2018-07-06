@@ -18,7 +18,6 @@ class Character
 	 * Candidate constructor.
 	 * @param string $character
 	 * @param int $width
-	 * @param resource $image
 	 */
 	public function __construct($character, $width)
 	{
@@ -38,22 +37,26 @@ class Character
 
 	/**
 	 * @param static[] $characters
+	 * @param bool $explain
 	 * @return string
 	 */
-	public static function toString($characters)
+	public static function toString($characters, $explain = false)
 	{
 		$result = array_reduce($characters, [self::class, '_toString'], '');
-//		echo "toString: $result " . ' (' . count($characters) . ') ' .
-//			implode(',', array_map(
-//					function($a){
-//						if($a->character == ''){
-//							return str_repeat($a->width < 0 ? '<' : '>', abs($a->width));
-//						} else {
-//							return $a->character;
-//						}
-//					}, $characters
-//				)
-//			).PHP_EOL;
+		if($explain) {
+			echo "toString: $result " . ' (' . count($characters) . ') ' .
+				implode(',', array_map(
+						function($a){
+							if($a->character == ''){
+								return str_repeat($a->width < 0 ? '<' : '>', abs($a->width));
+							} else {
+								return $a->character;
+							}
+						}, $characters
+					)
+				).PHP_EOL;
+		}
+
 		return $result;
 	}
 
