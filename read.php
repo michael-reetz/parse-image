@@ -12,7 +12,7 @@ require 'src/ParseImage.php';
 require 'src/Candidate.php';
 require 'src/Character.php';
 
-\MichaelReetz\Debug::getInstance()->verbose()->verbose();
+\MichaelReetz\Debug::getInstance()/*->verbose()->verbose()*/;
 
 $parseImage = new MichaelReetz\ParseImage();
 
