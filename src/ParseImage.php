@@ -85,8 +85,6 @@ class ParseImage
 		$this->characters[$width][$character] = $image;
 	}
 
-	private $massiveWrite = false;
-
 	/**
 	 * @param Character[] $characters
 	 * @param int $nested
@@ -95,56 +93,18 @@ class ParseImage
 	 */
 	private function testCharacters($characters, $nested = 0)
 	{
-
 		$nested++;
-//		if ($this->lastEcho + 0.2 < microtime(true)) {
-//			$kette = Character::toString($characters);
-//			echo "Aktuell: '${kette}'              \n";
-//			$this->lastEcho = microtime(true);
-//		}
-		// berechne aktuellen score und falls zu schlecht durect return
 		$errorPixels = $this->calcErrorPixel($characters);
-
-		if (
-			(
-				count($characters) > 0 && $characters[0]->character == 'j'
-				||
-				count($characters) > 1 && $characters[1]->character == 'j'
-			)
-			&&
-			$errorPixels < 14
-		) {
-			$this->massiveWrite = true;
-
-			usleep(1000);
-			$kette = Character::toString($characters, true);
-			echo "Aktuell: '${kette}'  $errorPixels            \n";
-
-		} else {
-			$this->massiveWrite = false;
-		}
-
 		if (
 			($errorPixels == 0)
 			&&
 			($this->maxX == ($this->width - 1))
 		) {
-			$errorPixels = $this->calcErrorPixel($characters);
-
-			var_dump($errorPixels, $this->maxX, $this->width-1);
-
-			$kette = Character::toString($characters, true);
-			echo "DONE: '${kette}'  \n";
 			return $characters;
 		}
-
-
-//
-
 		if ($errorPixels > 5) {
 			return [];
 		}
-
 		if ($nested > 80) {
 			echo "ARRRRGGGGG $nested 80 überschritten!";
 			echo "\t ERRORPIXELS : ${errorPixels}\n";
@@ -174,21 +134,26 @@ class ParseImage
 		});
 		// dieses Array dürfe nur noch länge 1 haben????
 		if (empty($testing)) {
-			echo "keine gültigen Ketten übrig\n";
 			return [];
 		} else {
 			$count = count($testing);
 			if ($count == 1) {
-				echo "so soll es sein, Rückgabe einer eindeutigen Kette bis hier\n";
 				return end($testing);
 			} else {
-				echo "mehrere Ketten möglich\n";
+
+				$nr = 1;
+				echo "Ketten möglich.\n";
+				foreach ($testing as $test) {
+					$kette = Character::toString($test);
+					$calcErrorPixel = $this->calcErrorPixel($test);
+					echo "Kette ${nr}/${count}: '${kette}' => ${calcErrorPixel}  :: ";
+					Character::toString($test, true);
+					$nr++;
+				}
+
 				$nr = 1;
 				foreach ($testing as $test) {
-					$kette = Character::toString($test, true);
-					echo "breche ab bei Kette ${nr}/${count}: '${kette}'\n";
 					$calcErrorPixel = $this->calcErrorPixel($test);
-					echo "\tERRORLEVEL : " . $calcErrorPixel . "\n";
 					if ($calcErrorPixel == 0) {
 						echo "YAY\n";
 						return $test;
@@ -208,8 +173,11 @@ class ParseImage
 	 */
 	private function calcErrorPixel($characters, $complete = false)
 	{
-		if (empty($characters) || Character::toString($characters) == '') {
-			if ($this->massiveWrite) echo "AUA";
+		$offsetX = 0;
+		$this->maxX = -1;
+
+		$toString = Character::toString($characters);
+		if (empty($characters) || $toString == '') {
 			return 0;
 		}
 		$length = Character::calcWidth($characters);
@@ -220,35 +188,56 @@ class ParseImage
 			return $this->height;
 		}
 		$this->emptyComparisonImage();
-		$offsetX = 0;
-		$this->maxX = 0;
-		foreach ($characters as $character) {
+		$somethingNotOfNew = false;
+		$testForOverwritten = false;
+		foreach ($characters as $index => $character) {
 			// neues zeichen komplett ausserhalb des vergleichbereichs
 			if ($offsetX >= $this->width) {
 				return $this->height;
 			}
 			// Zeichen dem Vergleichsbild hinzufügen
-			if ($character->character != '') {
+			if ($character->character == '') {
+				// weil Rückschritt den Vergleichsmode einschalten
+				$testForOverwritten =  $index > 0;
+			} else {
 				$characterImage = $this->characters[$character->width][$character->character];
 				for ($x = 0; $x < $character->width; $x++) {
 					$setX = $x + $offsetX;
-					if ($setX < 0 || $setX >= $this->width) {
+					if ($setX < 0 ) {
 						continue;
+					}
+					if ($setX >= $this->width) {
+						return $this->height;
 					}
 					$this->maxX = $setX;
 					for ($y = 0; $y < $this->height; $y++) {
 						$color = imagecolorat($characterImage, $x, $y);
+						$current = imagecolorat($this->imageForComparison, $setX, $y);
+						if (
+							$testForOverwritten
+							&&
+							$current != $this->backgroundColor
+							&&
+							$color == $this->backgroundColor
+						) {
+							$somethingNotOfNew = true;
+						}
 						if ($color != $this->backgroundColor) {
 							imagesetpixel($this->imageForComparison, $setX, $y, $color);
 						}
 					}
 				}
+				// das vorletze zeichen war ein rückschritt
+				// war der überdeckte bereich was eigenständiges?
+				if ($testForOverwritten && !$somethingNotOfNew) {
+					return $this->height;
+				}
 			}
 			$offsetX += $character->width;
 		}
 		$errors = 0;
-		for ($x = 0; $x < $this->maxX; $x++) {
-			for ($y = 0; $y < $this->height; $y++) {
+		for ($y = 0; $y < $this->height; $y++) {
+			for ($x = 0; $x <= $this->maxX; $x++) {
 				$a = imagecolorat($this->imageForComparison, $x, $y);
 				$b = imagecolorat($this->imageToParse, $x, $y);
 				if ($a != $b) {
@@ -270,6 +259,8 @@ class ParseImage
 		echo "Parse File $filename \n";
 		$this->debug->echoString("Parse File $filename \n", 2);
 		$parts = $this->splitImage(imagecreatefrompng($filename));
+		$result = '';
+		$collect = [];
 		foreach ($parts as $index => $part) {
 			$this->imageToParse = $part;
 			$this->width = imagesx($this->imageToParse);
@@ -277,11 +268,18 @@ class ParseImage
 			$this->backgroundColor = imagecolorallocate($this->imageForComparison, 255, 255, 255);
 			$this->emptyComparisonImage();
 			$characters = $this->testCharacters([]);
-			echo "\nHMMMMM" . Character::toString($characters, true) . "\n";
-			exit;
+			$ergebniss = Character::toString($characters);
+//			echo "=> " . $ergebniss . " ";
+//			Character::toString($characters, true);
+			$result .= $ergebniss;
+			$collect = array_merge($collect, $characters);
 		}
-		exit;
-//		return Character::toString($characters);
+
+
+		$ergebniss = Character::toString($collect);
+		echo "=> " . $ergebniss . " ";
+		Character::toString($collect, true);
+		return $result;
 	}
 
 	/**
@@ -295,7 +293,6 @@ class ParseImage
 		$state = true;
 		for ($x = 0, $startX = 0; $x < $width; $x++) {
 			$isEmpty = $this->isEmpty($image, $x);
-			echo $isEmpty ? ' ' : '#';
 			if ($isEmpty != $state) {
 				if ($state) {
 					$startX = $x;
