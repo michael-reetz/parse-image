@@ -197,8 +197,12 @@ class ParseImage
 			}
 			// Zeichen dem Vergleichsbild hinzufügen
 			if ($character->character == '') {
-				// weil Rückschritt den Vergleichsmode einschalten
-				$testForOverwritten =  $index > 0;
+				if ($index > 0) {
+					if (abs($character->width) == $characters[$index-1]->width) {
+						// weil Rückschritt gleich groß wie voriges Zeichen den Vergleichsmode einschalten
+						$testForOverwritten = true;
+					}
+				}
 			} else {
 				$characterImage = $this->characters[$character->width][$character->character];
 				for ($x = 0; $x < $character->width; $x++) {
@@ -232,6 +236,7 @@ class ParseImage
 				if ($testForOverwritten && !$somethingNotOfNew) {
 					return $this->height;
 				}
+				$testForOverwritten = false;
 			}
 			$offsetX += $character->width;
 		}
