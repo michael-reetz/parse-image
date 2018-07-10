@@ -43,20 +43,20 @@ class Character
 	public static function toString($characters, $explain = false)
 	{
 		$result = array_reduce($characters, [self::class, '_toString'], '');
+		$noNope = false;
 		if($explain) {
 			echo "toString: $result " . ' (' . count($characters) . ') ' .
 				implode(',', array_map(
-						function($a){
-							if($a->character == ''){
+						function($a) use (&$noNope){
+							if($a->character === ''){
 								return str_repeat($a->width < 0 ? '<' : '>', abs($a->width));
 							} else {
 								return $a->character;
 							}
 						}, $characters
 					)
-				).PHP_EOL;
+				);
 		}
-
 		return $result;
 	}
 

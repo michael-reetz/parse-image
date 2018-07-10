@@ -31,12 +31,6 @@ class ParseImage
 	/** @var int */
 	private $width = 0;
 
-	/** @var float */
-	private $lastEcho = 0;
-
-	/** @var int */
-	private $maxX = 0;
-
 	/**
 	 * Reads letters to build letter knowledge
 	 * ReadEmail constructor.
@@ -86,6 +80,61 @@ class ParseImage
 	}
 
 	/**
+	 * @param Character[] $current
+	 * @param int $backTrack
+	 * @return Character[][]
+	 * @throws \Exception
+	 */
+	private function buildTestList($current, $backTrack = 0)
+	{
+		if ($backTrack > 0) {
+			$current[] = new Character('', -$backTrack);
+		}
+		$testing = [];
+		foreach ($this->characters as $testWidth => $letters) {
+			foreach ($letters as $char => $testImage) {
+				if ($testWidth <= $backTrack) {
+					continue;
+				}
+				$character = new Character($char, $testWidth);
+				$test = $current;
+				$test[] = $character;
+				$testing[] = $test;
+			}
+		}
+		return $testing;
+	}
+
+	/**
+	 * @param Character[][] $testList
+	 * @return int|false FALSE wenn es keinen perfekten Treffer gab
+	 */
+	private function checkTestList(&$testList)
+	{
+		$errorCounts = array_map([$this, 'calcErrorPixel'], $testList);
+		$perfect = array_filter(
+			$errorCounts,
+			function($errorCount){return $errorCount === true;}
+		);
+		if (!empty($perfect)) {
+			if (count($perfect) > 1) {
+				uksort(
+					$perfect,
+					function ($index) use ($testList) { return count($testList[$index]); }
+				);
+			}
+			reset($perfect);
+			return key($perfect);
+		}
+		$testList = array_filter(
+			$testList,
+			function ($key) use($errorCounts) { return $errorCounts[$key] <= 5; },
+			ARRAY_FILTER_USE_KEY
+		);
+		return false;
+	}
+
+	/**
 	 * @param Character[] $characters
 	 * @param int $nested
 	 * @return Character[]
@@ -94,92 +143,60 @@ class ParseImage
 	private function testCharacters($characters, $nested = 0)
 	{
 		$nested++;
-		$errorPixels = $this->calcErrorPixel($characters);
-		if (
-			($errorPixels == 0)
-			&&
-			($this->maxX == ($this->width - 1))
-		) {
-			return $characters;
-		}
-		if ($errorPixels > 5) {
-			return [];
-		}
 		if ($nested > 80) {
 			echo "ARRRRGGGGG $nested 80 überschritten!";
-			echo "\t ERRORPIXELS : ${errorPixels}\n";
-			echo "\t Width : " . $this->width . "\n";
 			exit;
 		}
 
-		$testing = [];
-		// testen jedes Buchstaben
-		foreach ($this->characters as $testWidth => $letters) {
-			foreach ($letters as $char => $testImage) {
-				$character = new Character($char, $testWidth);
-				if ($testWidth > 2) {
-					$test = $characters;
-					$test[] = new Character('', -1);
-					$test[] = $character;
-					$testing[] = $this->testCharacters($test, $nested);
-				}
-				$test = $characters;
-				$test[] = $character;
-				$testing[] = $this->testCharacters($test, $nested);
-			}
+		$testing0 = $this->buildTestList($characters,0);
+		$hit = $this->checkTestList($testing0);
+		if ($hit !== false) {
+			return $testing0[$hit];
 		}
-		// alle verworfenen Ketten rauswerfen
-		$testing = array_filter($testing, function ($a) {
-			return !empty($a);
-		});
-		// dieses Array dürfe nur noch länge 1 haben????
-		if (empty($testing)) {
-			return [];
-		} else {
-			$count = count($testing);
-			if ($count == 1) {
-				return end($testing);
-			} else {
 
-				$nr = 1;
-				echo "Ketten möglich.\n";
-				foreach ($testing as $test) {
-					$kette = Character::toString($test);
-					$calcErrorPixel = $this->calcErrorPixel($test);
-					echo "Kette ${nr}/${count}: '${kette}' => ${calcErrorPixel}  :: ";
-					Character::toString($test, true);
-					$nr++;
-				}
-
-				$nr = 1;
-				foreach ($testing as $test) {
-					$calcErrorPixel = $this->calcErrorPixel($test);
-					if ($calcErrorPixel == 0) {
-						echo "YAY\n";
-						return $test;
-					}
-					$nr++;
-				}
-				return [];
-			}
+		// z. B. "k<j v<w w<v <j w<w w<t"
+		$testing1 = $this->buildTestList($characters,1);
+		$hit = $this->checkTestList($testing1);
+		if ($hit !== false) {
+			return $testing1[$hit];
 		}
+
+		// z.B. w<<j
+		$testing2 = $this->buildTestList($characters,2);
+		$hit = $this->checkTestList($testing2);
+		if ($hit !== false) {
+			return $testing2[$hit];
+		}
+
+		$testing = array_merge($testing0, $testing1 );  // $testing2
+		// ein array das einfach nur die gleichen keys wie $testing hat, aber ver wert von nested enthält
+		$nestedList = array_combine(array_keys($testing), array_fill(0, count($testing), $nested));
+		$testing = array_map(
+			[$this, 'testCharacters'],
+			$testing,
+			$nestedList
+		);
+		$hit = $this->checkTestList($testing);
+		if ($hit !== false) {
+			return $testing[$hit];
+		}
+		return [];
 	}
 
 	/**
 	 * @param Character[] $characters
-	 * @param bool $complete
-	 * @return integer
+	 * @return integer|true falls true dann ist das bild zu 100% erfüllt
 	 * @throws \Exception
 	 */
-	private function calcErrorPixel($characters, $complete = false)
+	private function calcErrorPixel($characters)
 	{
 		$offsetX = 0;
-		$this->maxX = -1;
+		$maxX = -1;
 
-		$toString = Character::toString($characters);
-		if (empty($characters) || $toString == '') {
+		if (empty($characters) || Character::toString($characters) === '') {
 			return 0;
 		}
+
 		$length = Character::calcWidth($characters);
 		if ($length <= 0) {
 			throw new \Exception('Kürzer als leer darf eine Kette nicht sein!');
@@ -196,10 +213,13 @@ class ParseImage
 				return $this->height;
 			}
 			// Zeichen dem Vergleichsbild hinzufügen
-			if ($character->character == '') {
+			if ($character->character === '') {
 				if ($index > 0) {
 					if (abs($character->width) == $characters[$index-1]->width) {
 						// weil Rückschritt gleich groß wie voriges Zeichen den Vergleichsmode einschalten
+						// soll heissen: Das vordere Zeichen muss eine Existenzberechtigung haben.
+						// es darf nicht durch das nachfolgende komplett überschrieben werden
+						// z. B. l<k
 						$testForOverwritten = true;
 					}
 				}
@@ -213,7 +233,7 @@ class ParseImage
 					if ($setX >= $this->width) {
 						return $this->height;
 					}
-					$this->maxX = $setX;
+					$maxX = $setX;
 					for ($y = 0; $y < $this->height; $y++) {
 						$color = imagecolorat($characterImage, $x, $y);
 						$current = imagecolorat($this->imageForComparison, $setX, $y);
@@ -242,13 +262,20 @@ class ParseImage
 		}
 		$errors = 0;
 		for ($y = 0; $y < $this->height; $y++) {
-			for ($x = 0; $x <= $this->maxX; $x++) {
+			for ($x = 0; $x <= $maxX; $x++) {
 				$a = imagecolorat($this->imageForComparison, $x, $y);
 				$b = imagecolorat($this->imageToParse, $x, $y);
 				if ($a != $b) {
 					$errors++;
 				}
 			}
+		}
+		if (
+			($errors == 0)
+			&&
+			($maxX == ($this->width - 1))
+		){
+			return true;
 		}
 		return $errors;
 	}
@@ -261,7 +288,7 @@ class ParseImage
 	 */
 	public function read($filename)
 	{
-		echo "Parse File $filename \n";
+		echo "\nParse File $filename \n";
 		$this->debug->echoString("Parse File $filename \n", 2);
 		$parts = $this->splitImage(imagecreatefrompng($filename));
 		$result = '';
@@ -274,16 +301,16 @@ class ParseImage
 			$this->emptyComparisonImage();
 			$characters = $this->testCharacters([]);
 			$ergebniss = Character::toString($characters);
-//			echo "=> " . $ergebniss . " ";
-//			Character::toString($characters, true);
+			if ($ergebniss===''){
+				echo "\n TEILSEQUENZ NICHT GEFUNDEN \n";
+			}
 			$result .= $ergebniss;
 			$collect = array_merge($collect, $characters);
 		}
-
-
-		$ergebniss = Character::toString($collect);
-		echo "=> " . $ergebniss . " ";
-		Character::toString($collect, true);
+//		$ergebniss = Character::toString($collect);
+//		echo "=> " . $ergebniss . "\n";
+//		Character::toString($collect, true);
+//		echo "\n";
 		return $result;
 	}
 
