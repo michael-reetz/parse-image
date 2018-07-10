@@ -77,6 +77,8 @@ class ParseImage
 			$this->characters[$width] = [];
 		}
 		$this->characters[$width][$character] = $image;
+		$md5 = $this->imageToMd5($image);
+		$this->addToLookUpTable($character, $md5);
 	}
 
 	/**
@@ -280,6 +282,8 @@ class ParseImage
 		return $errors;
 	}
 
+	private $parsedImages = [];
+
 	/**
 	 * parses a file for letters and returns the found string
 	 * @param string $filename
@@ -288,29 +292,37 @@ class ParseImage
 	 */
 	public function read($filename)
 	{
-		echo "\nParse File $filename \n";
+		$start = microtime(true);
 		$this->debug->echoString("Parse File $filename \n", 2);
 		$parts = $this->splitImage(imagecreatefrompng($filename));
 		$result = '';
-		$collect = [];
 		foreach ($parts as $index => $part) {
 			$this->imageToParse = $part;
 			$this->width = imagesx($this->imageToParse);
-			$this->imageForComparison = imagecreatetruecolor($this->width, $this->height);
-			$this->backgroundColor = imagecolorallocate($this->imageForComparison, 255, 255, 255);
-			$this->emptyComparisonImage();
-			$characters = $this->testCharacters([]);
-			$ergebniss = Character::toString($characters);
-			if ($ergebniss===''){
-				echo "\n TEILSEQUENZ NICHT GEFUNDEN \n";
+			$this->backgroundColor = imagecolorallocate($this->imageToParse, 255, 255, 255);
+			$md5 = $this->imageToMd5();
+			if (array_key_exists($md5, $this->parsedImages)) {
+				$ergebniss = $this->parsedImages[$md5];
+			} else {
+				$this->imageForComparison = imagecreatetruecolor($this->width, $this->height);
+				$this->emptyComparisonImage();
+				$characters = $this->testCharacters([]);
+				$ergebniss = Character::toString($characters);
+				if ($ergebniss===''){
+					echo "################ TEILSEQUENZ NICHT GEFUNDEN ###############\n";
+				} else {
+					$this->addToLookUpTable($ergebniss, $md5);
+				}
 			}
 			$result .= $ergebniss;
-			$collect = array_merge($collect, $characters);
 		}
-//		$ergebniss = Character::toString($collect);
-//		echo "=> " . $ergebniss . "\n";
-//		Character::toString($collect, true);
-//		echo "\n";
+		$end = microtime(true);
+		$length = strlen($result);
+		if ($length > 0) {
+			echo round($length / ($end-$start)) . " char/sec\n";
+		}else {
+			echo "Nothing found!\n";
+		}
 		return $result;
 	}
 
@@ -369,32 +381,46 @@ class ParseImage
 		return imagefilledrectangle($this->imageForComparison, 0, 0, $this->width - 1, $this->height - 1, $this->backgroundColor);
 	}
 
-//	private function test()
-//	{
-//		echo "HAHA!!\n\n";
-//		$test = [
-//			new Character('', -1),
-//			new Character('j', 3),
-//			new Character('', 1),
-//			new Character('', 1),
-//			new Character('a', 5),
-//			new Character('', 1),
-//			new Character('e', 4),
-//			new Character('', 1),
-//			new Character('', 1),
-//			new Character('k', 5),
-//			new Character('', 1),
-//			new Character('e', 4),
-//			new Character('', 1),
-//			new Character('', 1),
-//			new Character('l', 1),
-//			new Character('', 1),
-//			new Character('', 1),
-////			new Character('l',1),
-//			new Character('.', 1),
-//			new Character('', 1),
-//			new Character('', 1),
-//		];
-//		$this->calcErrorPixel($test);
-//	}
+	/**
+	 * @param resource $image
+	 * @return string
+	 */
+	private function imageToMd5($image = null)
+	{
+		if (is_null($image)) {
+			$image = $this->imageToParse;
+		}
+		$height = imagesy($image);
+		$width = imagesx($image);
+		$white = imagecolorallocate($image, 255, 255, 255);
+
+		$byte = 0;
+		$stream = '';
+		$cnt = 0;
+		for ($y = 0; $y < $height; $y++) {
+			for ($x = 0; $x < $width; $x++) {
+				$b = $white != imagecolorat($image, $x, $y);
+				$byte = $byte | $b;
+				$cnt++;
+				if ($cnt % 8 === 0) {
+					$chr = chr($byte);
+					$stream .= $chr;
+					$byte = 0;
+				}
+				$byte = $byte << 1;
+			}
+		}
+		$md5 = md5($stream);
+		return $md5;
+	}
+
+	/**
+	 * @param string $string
+	 * @param string $md5
+	 */
+	private function addToLookUpTable($string, $md5)
+	{
+		echo "$md5 =:: $string\n";
+		$this->parsedImages[$md5] = $string;
+	}
 }

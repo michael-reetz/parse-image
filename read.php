@@ -24,6 +24,7 @@ if ($argc == 1) {
 			continue;
 		}
 		try {
+			echo "\nParse File $filename \n";
 			echo $parseImage->read($filename) . "\n";
 		} catch (Exception $exception) {
 			$errors[] = $exception->getMessage();
