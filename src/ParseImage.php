@@ -362,7 +362,6 @@ class ParseImage
 		if ($length > 0) {
 			$timeDiff = max(0.001, $end - $start);
 			if ($timeDiff == 0.001) {
-				sleep(1);
 				$this->debug->echoString(' > ', 3);
 			}
 			$speed = round($length / ($timeDiff));
