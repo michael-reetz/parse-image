@@ -12,7 +12,7 @@ require 'src/ParseImage.php';
 require 'src/Candidate.php';
 require 'src/Character.php';
 
-\MichaelReetz\Debug::getInstance()/*->verbose()->verbose()*/;
+\MichaelReetz\Debug::getInstance()->verbose()->verbose()->verbose();
 
 $parseImage = new MichaelReetz\ParseImage();
 
@@ -24,7 +24,7 @@ if ($argc == 1) {
 			continue;
 		}
 		try {
-			echo "\nParse File $filename \n";
+//			echo "\nParse File $filename \n";
 			echo $parseImage->read($filename) . "\n";
 		} catch (Exception $exception) {
 			$errors[] = $exception->getMessage();

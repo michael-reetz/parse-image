@@ -358,8 +358,15 @@ class ParseImage
 		}
 		$end = microtime(true);
 		$length = strlen($result);
+
 		if ($length > 0) {
-			$this->debug->echoString(round($length / ($end-$start)) . " char/sec\n", 3);
+			$timeDiff = max(0.001, $end - $start);
+			if ($timeDiff == 0.001) {
+				sleep(1);
+				$this->debug->echoString(' > ', 3);
+			}
+			$speed = round($length / ($timeDiff));
+			$this->debug->echoString($speed . " char/sec\n", 3);
 		} else {
 			$this->debug->echoString("Nothing found!\n", 1);
 		}
