@@ -44,7 +44,7 @@ class Debug
 	 * @param int $verbose
 	 * @return Debug
 	 */
-	public function varDump($mixed, $verbose = 4)
+	public function varDump($mixed, $verbose = 10)
 	{
 		if ($this->isVerbose($verbose)) {
 			var_dump($mixed);

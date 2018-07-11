@@ -1,19 +1,23 @@
 <?php
 /**
- * Created by PhpStorm.
- * User: Michael
- * Date: 21.06.2018
- * Time: 19:43
+ * @copyright 2018 Michael Reetz
+ * @license   read /LICENSE
+ * @link      http://www.reetzclan.de
  */
+
 namespace MichaelReetz;
 /**
  * Class ParseImage
- * Written in an night session because the yield of ocr was much too bad for
- * these small but very regular letters.
+ * Written in a bit more than a night session because the yield of ocr was much too bad for
+ * these small but very regular letters. Now it is perfect.
  */
 class ParseImage
 {
-	private $characters = [];
+
+	/** @var resource[][]  [width][character] => image */
+	private $alphabet = [];
+
+	/** @var integer */
 	private $height = null;
 
 	/** @var Debug */
@@ -31,6 +35,9 @@ class ParseImage
 	/** @var int */
 	private $width = 0;
 
+	/** @var string[] "md5 of Bitmask" -> string */
+	private $parsedImages = [];
+
 	/**
 	 * Reads letters to build letter knowledge
 	 * ReadEmail constructor.
@@ -44,8 +51,8 @@ class ParseImage
 			}
 			$this->readCharacterFile($file);
 		}
-		krsort($this->characters);
-		$this->debug->varDump($this->characters);
+		krsort($this->alphabet);
+		$this->debug->varDump($this->alphabet);
 	}
 
 	/**
@@ -56,7 +63,7 @@ class ParseImage
 	 */
 	private function readCharacterFile($characterFilename)
 	{
-		$this->debug->echoString("read character file $characterFilename\n", 2);
+		$this->debug->echoString("read character file $characterFilename\n", 4);
 		$char = substr($characterFilename, 0, 1);
 		$image = imagecreatefrompng(__DIR__ . '/characters/' . $characterFilename);
 		if ($this->height == null) {
@@ -72,11 +79,11 @@ class ParseImage
 	private function setupCharacter($image, $character)
 	{
 		$width = imagesx($image);
-		$this->debug->echoString("add character $character with width $width\n", 2);
-		if (!key_exists($width, $this->characters)) {
-			$this->characters[$width] = [];
+		$this->debug->echoString("add character $character with width $width\n", 4);
+		if (!key_exists($width, $this->alphabet)) {
+			$this->alphabet[$width] = [];
 		}
-		$this->characters[$width][$character] = $image;
+		$this->alphabet[$width][$character] = $image;
 		$md5 = $this->imageToMd5($image);
 		$this->addToLookUpTable($character, $md5);
 	}
@@ -93,7 +100,7 @@ class ParseImage
 			$current[] = new Character('', -$backTrack);
 		}
 		$testing = [];
-		foreach ($this->characters as $testWidth => $letters) {
+		foreach ($this->alphabet as $testWidth => $letters) {
 			foreach ($letters as $char => $testImage) {
 				if ($testWidth <= $backTrack) {
 					continue;
@@ -116,13 +123,19 @@ class ParseImage
 		$errorCounts = array_map([$this, 'calcErrorPixel'], $testList);
 		$perfect = array_filter(
 			$errorCounts,
-			function($errorCount){return $errorCount === true;}
+			function($errorCount)
+			{
+				return $errorCount === true;
+			}
 		);
 		if (!empty($perfect)) {
 			if (count($perfect) > 1) {
 				uksort(
 					$perfect,
-					function ($index) use ($testList) { return count($testList[$index]); }
+					function ($index) use ($testList)
+					{
+						return count($testList[$index]);
+					}
 				);
 			}
 			reset($perfect);
@@ -130,7 +143,10 @@ class ParseImage
 		}
 		$testList = array_filter(
 			$testList,
-			function ($key) use($errorCounts) { return $errorCounts[$key] <= 5; },
+			function ($key) use($errorCounts)
+			{
+				return $errorCounts[$key] <= 5;
+			},
 			ARRAY_FILTER_USE_KEY
 		);
 		return false;
@@ -146,25 +162,25 @@ class ParseImage
 	{
 		$nested++;
 		if ($nested > 80) {
-			echo "ARRRRGGGGG $nested 80 überschritten!";
+			$this->debug->echoString("ARRRRGGGGG $nested 80 überschritten!\n", 1);
 			exit;
 		}
 
-		$testing0 = $this->buildTestList($characters,0);
+		$testing0 = $this->buildTestList($characters, 0);
 		$hit = $this->checkTestList($testing0);
 		if ($hit !== false) {
 			return $testing0[$hit];
 		}
 
 		// z. B. "k<j v<w w<v <j w<w w<t"
-		$testing1 = $this->buildTestList($characters,1);
+		$testing1 = $this->buildTestList($characters, 1);
 		$hit = $this->checkTestList($testing1);
 		if ($hit !== false) {
 			return $testing1[$hit];
 		}
 
 		// z.B. w<<j
-		$testing2 = $this->buildTestList($characters,2);
+		$testing2 = $this->buildTestList($characters, 2);
 		$hit = $this->checkTestList($testing2);
 		if ($hit !== false) {
 			return $testing2[$hit];
@@ -186,19 +202,96 @@ class ParseImage
 	}
 
 	/**
+	 * Soll das neue Zeichen komplett ausserhalb des vergleichbereichs positioniert werden
+	 * @param integer $offsetX
+	 * @return bool
+	 */
+	private function isNewCharacterOutsideOfRightBoundary($offsetX)
+	{
+		return $offsetX >= $this->width;
+	}
+
+	/**
+	 * Zeichen dem Vergleichsbild hinzufügen, dabei ggf auch prüfen, dass das voerherige
+	 * Bild eine Existenzberechtigung hatte
+	 *
+	 * @param integer $offsetX
+	 * @param Character $character
+	 * @param boolean $testForOverwritten
+	 * @return integer|false MaxX
+	 */
+	private function addCharacterToComparisonImage($offsetX, $character, $testForOverwritten)
+	{
+		$maxX = -1;
+		$somethingNotOfNew = false;
+		$characterImage = $this->alphabet[$character->width][$character->character];
+		for ($x = 0; $x < $character->width; $x++) {
+			$setX = $x + $offsetX;
+			if ($setX < 0 ) {
+				continue;
+			}
+			if ($setX >= $this->width) {
+				return false;
+			}
+			$maxX = $setX;
+			for ($y = 0; $y < $this->height; $y++) {
+				$color = imagecolorat($characterImage, $x, $y);
+				$current = imagecolorat($this->imageForComparison, $setX, $y);
+				if (
+					$testForOverwritten
+					&&
+					$current != $this->backgroundColor
+					&&
+					$color == $this->backgroundColor
+				) {
+					$somethingNotOfNew = true;
+				}
+				if ($color != $this->backgroundColor) {
+					imagesetpixel($this->imageForComparison, $setX, $y, $color);
+				}
+			}
+		}
+		// das vorletze Zeichen war ein Rückschritt
+		// war der überdeckte Bereich etwas eigenständiges?
+		if ($testForOverwritten && !$somethingNotOfNew) {
+			return false;
+		}
+		return $maxX;
+	}
+
+	/**
+	 * Wenn der Rückschritt gleich groß ist wie das voriges Zeichen breit war,
+	 * muss der Vergleichsmodus einschalten werden
+	 *
+	 * Das vordere Zeichen muss eine Existenzberechtigung haben.
+	 * es darf nicht durch das nachfolgende komplett überdeckt werden
+	 * z. B. l<k  oder .<l (diverse möglich)
+	 *
+	 * @param Character[] $characters
+	 * @param integer $index
+	 * @return boolean
+	 */
+	private function getDoWeNeedToDoTheTestForOverwritten($characters, $index)
+	{
+		if ($index == 0) {
+			return false;
+		}
+		if (abs($characters[$index]->width) == $characters[$index-1]->width) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
 	 * @param Character[] $characters
 	 * @return integer|true falls true dann ist das bild zu 100% erfüllt
 	 * @throws \Exception
 	 */
 	private function calcErrorPixel($characters)
 	{
-		$offsetX = 0;
-		$maxX = -1;
-
 		if (empty($characters) || Character::toString($characters) === '') {
 			return 0;
 		}
-
 		$length = Character::calcWidth($characters);
 		if ($length <= 0) {
 			throw new \Exception('Kürzer als leer darf eine Kette nicht sein!');
@@ -207,82 +300,29 @@ class ParseImage
 			return $this->height;
 		}
 		$this->emptyComparisonImage();
-		$somethingNotOfNew = false;
+
+		$maxX = -1;
+		$offsetX = 0;
 		$testForOverwritten = false;
 		foreach ($characters as $index => $character) {
-			// neues zeichen komplett ausserhalb des vergleichbereichs
-			if ($offsetX >= $this->width) {
+			if ($this->isNewCharacterOutsideOfRightBoundary($offsetX)) {
 				return $this->height;
 			}
-			// Zeichen dem Vergleichsbild hinzufügen
 			if ($character->character === '') {
-				if ($index > 0) {
-					if (abs($character->width) == $characters[$index-1]->width) {
-						// weil Rückschritt gleich groß wie voriges Zeichen den Vergleichsmode einschalten
-						// soll heissen: Das vordere Zeichen muss eine Existenzberechtigung haben.
-						// es darf nicht durch das nachfolgende komplett überschrieben werden
-						// z. B. l<k
-						$testForOverwritten = true;
-					}
-				}
+				$testForOverwritten = $this->getDoWeNeedToDoTheTestForOverwritten($characters, $index);
 			} else {
-				$characterImage = $this->characters[$character->width][$character->character];
-				for ($x = 0; $x < $character->width; $x++) {
-					$setX = $x + $offsetX;
-					if ($setX < 0 ) {
-						continue;
-					}
-					if ($setX >= $this->width) {
-						return $this->height;
-					}
-					$maxX = $setX;
-					for ($y = 0; $y < $this->height; $y++) {
-						$color = imagecolorat($characterImage, $x, $y);
-						$current = imagecolorat($this->imageForComparison, $setX, $y);
-						if (
-							$testForOverwritten
-							&&
-							$current != $this->backgroundColor
-							&&
-							$color == $this->backgroundColor
-						) {
-							$somethingNotOfNew = true;
-						}
-						if ($color != $this->backgroundColor) {
-							imagesetpixel($this->imageForComparison, $setX, $y, $color);
-						}
-					}
-				}
-				// das vorletze zeichen war ein rückschritt
-				// war der überdeckte bereich was eigenständiges?
-				if ($testForOverwritten && !$somethingNotOfNew) {
+				$maxX = $this->addCharacterToComparisonImage($offsetX, $character, $testForOverwritten);
+				if ($maxX === false) {
 					return $this->height;
 				}
 				$testForOverwritten = false;
 			}
 			$offsetX += $character->width;
 		}
-		$errors = 0;
-		for ($y = 0; $y < $this->height; $y++) {
-			for ($x = 0; $x <= $maxX; $x++) {
-				$a = imagecolorat($this->imageForComparison, $x, $y);
-				$b = imagecolorat($this->imageToParse, $x, $y);
-				if ($a != $b) {
-					$errors++;
-				}
-			}
-		}
-		if (
-			($errors == 0)
-			&&
-			($maxX == ($this->width - 1))
-		){
-			return true;
-		}
-		return $errors;
+		return $this->interpretMismatchPixelsInCurrentArea($maxX);
 	}
 
-	private $parsedImages = [];
+
 
 	/**
 	 * parses a file for letters and returns the found string
@@ -293,7 +333,7 @@ class ParseImage
 	public function read($filename)
 	{
 		$start = microtime(true);
-		$this->debug->echoString("Parse File $filename \n", 2);
+		$this->debug->echoString("Parse File $filename \n", 3);
 		$parts = $this->splitImage(imagecreatefrompng($filename));
 		$result = '';
 		foreach ($parts as $index => $part) {
@@ -308,8 +348,8 @@ class ParseImage
 				$this->emptyComparisonImage();
 				$characters = $this->testCharacters([]);
 				$ergebniss = Character::toString($characters);
-				if ($ergebniss===''){
-					echo "################ TEILSEQUENZ NICHT GEFUNDEN ###############\n";
+				if ($ergebniss==='') {
+					$this->debug->echoString("################ TEILSEQUENZ NICHT GEFUNDEN ###############\n", 1);
 				} else {
 					$this->addToLookUpTable($ergebniss, $md5);
 				}
@@ -319,9 +359,9 @@ class ParseImage
 		$end = microtime(true);
 		$length = strlen($result);
 		if ($length > 0) {
-			echo round($length / ($end-$start)) . " char/sec\n";
-		}else {
-			echo "Nothing found!\n";
+			$this->debug->echoString(round($length / ($end-$start)) . " char/sec\n", 3);
+		} else {
+			$this->debug->echoString("Nothing found!\n", 1);
 		}
 		return $result;
 	}
@@ -378,7 +418,12 @@ class ParseImage
 	 */
 	private function emptyComparisonImage()
 	{
-		return imagefilledrectangle($this->imageForComparison, 0, 0, $this->width - 1, $this->height - 1, $this->backgroundColor);
+		return imagefilledrectangle(
+			$this->imageForComparison,
+			0, 0,
+			$this->width - 1, $this->height - 1,
+			$this->backgroundColor
+		);
 	}
 
 	/**
@@ -420,7 +465,32 @@ class ParseImage
 	 */
 	private function addToLookUpTable($string, $md5)
 	{
-		echo "$md5 =:: $string\n";
+		$this->debug->echoString("$md5 =:: $string\n", 2);
 		$this->parsedImages[$md5] = $string;
+	}
+
+	/**
+	 * errechnet die Anzahl an Pixeln die nicht übereinstimmen. Falls das komplette
+	 * Bild überprüft wurde wird true zurückgegeben.
+	 *
+	 * @param integer $maxX
+	 * @return int|true true if done
+	 */
+	private function interpretMismatchPixelsInCurrentArea($maxX)
+	{
+		$errors = 0;
+		for ($y = 0; $y < $this->height; $y++) {
+			for ($x = 0; $x <= $maxX; $x++) {
+				$a = imagecolorat($this->imageForComparison, $x, $y);
+				$b = imagecolorat($this->imageToParse, $x, $y);
+				if ($a != $b) {
+					$errors++;
+				}
+			}
+		}
+		if (($errors == 0) && ($maxX == ($this->width - 1))) {
+			return true;
+		}
+		return $errors;
 	}
 }
