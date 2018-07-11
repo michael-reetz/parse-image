@@ -1,10 +1,10 @@
 <?php
 /**
- * Created by PhpStorm.
- * User: Michael
- * Date: 21.06.2018
- * Time: 19:43
+ * @copyright 2018 Michael Reetz
+ * @license   read /LICENSE
+ * @link      http://www.reetzclan.de
  */
+
 namespace MichaelReetz;
 /**
  * Class Debug

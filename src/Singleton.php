@@ -1,9 +1,10 @@
 <?php
 /**
- * @copyright 2018 krumedia GmbH
- * @license   All rights reserved
- * @link      http://www.krumedia.com
+ * @copyright 2018 Michael Reetz
+ * @license   read /LICENSE
+ * @link      http://www.reetzclan.de
  */
+
 namespace MichaelReetz;
 
 trait Singleton

@@ -1,15 +1,13 @@
 <?php
 /**
- * Created by PhpStorm.
- * User: Michael Reetz
- * Date: 21.06.2018
- * Time: 19:43
+ * @copyright 2018 Michael Reetz
+ * @license   read /LICENSE
+ * @link      http://www.reetzclan.de
  */
 
 require 'src/Singleton.php';
 require 'src/Debug.php';
 require 'src/ParseImage.php';
-require 'src/Candidate.php';
 require 'src/Character.php';
 
 \MichaelReetz\Debug::getInstance()->verbose()->verbose()->verbose();
