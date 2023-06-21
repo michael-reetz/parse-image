@@ -9,11 +9,10 @@ namespace MichaelReetz;
 
 trait Singleton
 {
-	static private $instance = null;
+	static private $instance;
 
 	/**
 	 * Protect from creation through new Singleton
-	 * Singleton constructor.
 	 */
 	private function __construct()
 	{
@@ -37,10 +36,10 @@ trait Singleton
 	}
 
 	/**
-	 * @return Singleton|null
+	 * @return object|null
 	 */
-	static public function getInstance()
+	public static function getInstance(): ?object
 	{
-		return self::$instance === null ? self::$instance = new static() : self::$instance;
+		return self::$instance ?? (self::$instance = new static());
 	}
 }

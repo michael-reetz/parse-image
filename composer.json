@@ -1,0 +1,9 @@
+{
+	"name": "michaelreetz/parse-image",
+	"description": "ein kleiner One Line Parser",
+	"homepage": "https://github.com/michael-reetz/parse-image",
+	"require": {
+		"php": ">=7.4",
+		"ext-gd": "*"
+	}
+}

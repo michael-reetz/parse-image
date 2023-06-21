@@ -6,8 +6,11 @@
  */
 
 namespace MichaelReetz;
+
+use Exception;
+use LogicException;
+
 /**
- * Class ParseImage
  * Written in a bit more than a night session because the yield of ocr was much too bad for
  * these small but very regular letters. Now it is perfect.
  */
@@ -15,28 +18,28 @@ class ParseImage
 {
 
 	/** @var resource[][]  [width][character] => image */
-	private $alphabet = [];
+	private array $alphabet = [];
 
-	/** @var integer */
-	private $height = null;
+	/** @var int|null */
+	private ?int $height = null;
 
 	/** @var Debug */
-	private $debug;
+	private Debug $debug;
 
-	/** @var resource */
-	private $imageToParse = null;
+	/** @var resource|null */
+	private $imageToParse;
 
-	/** @var resource */
-	private $imageForComparison = null;
+	/** @var resource|null */
+	private $imageForComparison;
 
-	/** @var integer */
-	private $backgroundColor = null;
+	/** @var int|null */
+	private ?int $backgroundColor;
 
 	/** @var int */
-	private $width = 0;
+	private int $width = 0;
 
 	/** @var string[] "md5 of Bitmask" -> string */
-	private $parsedImages = [];
+	private array $parsedImages = [];
 
 	/**
 	 * Reads letters to build letter knowledge
@@ -44,6 +47,9 @@ class ParseImage
 	 */
 	public function __construct()
 	{
+		if (!file_exists(__DIR__ . '/characters') || !is_dir(__DIR__ . '/characters')) {
+			throw new LogicException('You seam to missing the link to the character folder!');
+		}
 		$this->debug = Debug::getInstance();
 		foreach (scandir(__DIR__ . '/characters') as $file) {
 			if (!is_file(__DIR__ . '/characters/' . $file)) {
@@ -56,17 +62,17 @@ class ParseImage
 	}
 
 	/**
-	 * first characte is the letter
+	 * first character is the letter
 	 * second might by "-" to tell that the first column of the image might be ignored
 	 * optional "_" as second or third a.t.m. only because of windows because a === A for windows ; stupid :-/
 	 * @param string $characterFilename
 	 */
-	private function readCharacterFile($characterFilename)
+	private function readCharacterFile(string $characterFilename): void
 	{
 		$this->debug->echoString("read character file $characterFilename\n", 4);
-		$char = substr($characterFilename, 0, 1);
+		$char = $characterFilename[0];
 		$image = imagecreatefrompng(__DIR__ . '/characters/' . $characterFilename);
-		if ($this->height == null) {
+		if ($this->height === null) {
 			$this->height = imagesy($image);
 		}
 		$this->setupCharacter($image, $char);
@@ -76,11 +82,11 @@ class ParseImage
 	 * @param resource $image
 	 * @param string $character
 	 */
-	private function setupCharacter($image, $character)
+	private function setupCharacter($image, string $character): void
 	{
 		$width = imagesx($image);
 		$this->debug->echoString("add character $character with width $width\n", 4);
-		if (!key_exists($width, $this->alphabet)) {
+		if (!array_key_exists($width, $this->alphabet)) {
 			$this->alphabet[$width] = [];
 		}
 		$this->alphabet[$width][$character] = $image;
@@ -92,9 +98,9 @@ class ParseImage
 	 * @param Character[] $current
 	 * @param int $backTrack
 	 * @return Character[][]
-	 * @throws \Exception
+	 * @throws Exception
 	 */
-	private function buildTestList($current, $backTrack = 0)
+	private function buildTestList(array $current, int $backTrack): array
 	{
 		if ($backTrack > 0) {
 			$current[] = new Character('', -$backTrack);
@@ -116,14 +122,14 @@ class ParseImage
 
 	/**
 	 * @param Character[][] $testList
-	 * @return int|false FALSE wenn es keinen perfekten Treffer gab
+	 * @return int|false FALSE, wenn es keinen perfekten Treffer gab.
 	 */
-	private function checkTestList(&$testList)
+	private function checkTestList(array &$testList)
 	{
 		$errorCounts = array_map([$this, 'calcErrorPixel'], $testList);
 		$perfect = array_filter(
 			$errorCounts,
-			function($errorCount)
+			static function($errorCount)
 			{
 				return $errorCount === true;
 			}
@@ -132,7 +138,7 @@ class ParseImage
 			if (count($perfect) > 1) {
 				uksort(
 					$perfect,
-					function ($index) use ($testList)
+					static function ($index) use ($testList)
 					{
 						return count($testList[$index]);
 					}
@@ -143,7 +149,7 @@ class ParseImage
 		}
 		$testList = array_filter(
 			$testList,
-			function ($key) use($errorCounts)
+			static function ($key) use($errorCounts)
 			{
 				return $errorCounts[$key] <= 5;
 			},
@@ -156,9 +162,9 @@ class ParseImage
 	 * @param Character[] $characters
 	 * @param int $nested
 	 * @return Character[]
-	 * @throws \Exception
+	 * @throws Exception
 	 */
-	private function testCharacters($characters, $nested = 0)
+	private function testCharacters(array $characters, int $nested = 0): array
 	{
 		$nested++;
 		if ($nested > 80) {
@@ -203,10 +209,10 @@ class ParseImage
 
 	/**
 	 * Soll das neue Zeichen komplett ausserhalb des vergleichbereichs positioniert werden
-	 * @param integer $offsetX
+	 * @param int $offsetX
 	 * @return bool
 	 */
-	private function isNewCharacterOutsideOfRightBoundary($offsetX)
+	private function isNewCharacterOutsideOfRightBoundary(int $offsetX): bool
 	{
 		return $offsetX >= $this->width;
 	}
@@ -215,12 +221,12 @@ class ParseImage
 	 * Zeichen dem Vergleichsbild hinzufügen, dabei ggf auch prüfen, dass das voerherige
 	 * Bild eine Existenzberechtigung hatte
 	 *
-	 * @param integer $offsetX
+	 * @param int $offsetX
 	 * @param Character $character
-	 * @param boolean $testForOverwritten
-	 * @return integer|false MaxX
+	 * @param bool $testForOverwritten
+	 * @return int|false MaxX
 	 */
-	private function addCharacterToComparisonImage($offsetX, $character, $testForOverwritten)
+	private function addCharacterToComparisonImage(int $offsetX, Character $character, bool $testForOverwritten)
 	{
 		$maxX = -1;
 		$somethingNotOfNew = false;
@@ -240,13 +246,13 @@ class ParseImage
 				if (
 					$testForOverwritten
 					&&
-					$current != $this->backgroundColor
+					$current !== $this->backgroundColor
 					&&
-					$color == $this->backgroundColor
+					$color === $this->backgroundColor
 				) {
 					$somethingNotOfNew = true;
 				}
-				if ($color != $this->backgroundColor) {
+				if ($color !== $this->backgroundColor) {
 					imagesetpixel($this->imageForComparison, $setX, $y, $color);
 				}
 			}
@@ -268,15 +274,15 @@ class ParseImage
 	 * z. B. l<k  oder .<l (diverse möglich)
 	 *
 	 * @param Character[] $characters
-	 * @param integer $index
-	 * @return boolean
+	 * @param int $index
+	 * @return bool
 	 */
-	private function getDoWeNeedToDoTheTestForOverwritten($characters, $index)
+	private function getDoWeNeedToDoTheTestForOverwritten(array $characters, int $index): bool
 	{
-		if ($index == 0) {
+		if ($index === 0) {
 			return false;
 		}
-		if (abs($characters[$index]->width) == $characters[$index-1]->width) {
+		if (abs($characters[$index]->width) === $characters[$index-1]->width) {
 			return true;
 		}
 		return false;
@@ -284,17 +290,17 @@ class ParseImage
 
 	/**
 	 * @param Character[] $characters
-	 * @return integer|true falls true dann ist das bild zu 100% erfüllt
-	 * @throws \Exception
+	 * @return int|true Falls "true", dann ist das Bild zu 100 % erfüllt
+	 * @throws Exception
 	 */
-	private function calcErrorPixel($characters)
+	private function calcErrorPixel(array $characters)
 	{
 		if (empty($characters) || Character::toString($characters) === '') {
 			return 0;
 		}
 		$length = Character::calcWidth($characters);
 		if ($length <= 0) {
-			throw new \Exception('Kürzer als leer darf eine Kette nicht sein!');
+			throw new LogicException('Kürzer als leer darf eine Kette nicht sein!');
 		}
 		if ($length > $this->width + 1) {
 			return $this->height;
@@ -322,46 +328,50 @@ class ParseImage
 		return $this->interpretMismatchPixelsInCurrentArea($maxX);
 	}
 
-
-
 	/**
 	 * parses a file for letters and returns the found string
 	 * @param string $filename
 	 * @return string
-	 * @throws \Exception
+	 * @throws Exception
 	 */
-	public function read($filename)
+	public function read(string $filename): string
 	{
 		$start = microtime(true);
 		$this->debug->echoString("Parse File $filename \n", 3);
-		$parts = $this->splitImage(imagecreatefrompng($filename));
+		$image = @imagecreatefrompng($filename);
+		if ($image=== false) {
+			$this->debug->echoString("This is not an image file!\n", 1);
+			$parts = [];
+		} else {
+			$parts = $this->splitImage($image);
+		}
 		$result = '';
-		foreach ($parts as $index => $part) {
+		foreach ($parts as $part) {
 			$this->imageToParse = $part;
 			$this->width = imagesx($this->imageToParse);
 			$this->backgroundColor = imagecolorallocate($this->imageToParse, 255, 255, 255);
 			$md5 = $this->imageToMd5();
 			if (array_key_exists($md5, $this->parsedImages)) {
-				$ergebniss = $this->parsedImages[$md5];
+				$hit = $this->parsedImages[$md5];
 			} else {
 				$this->imageForComparison = imagecreatetruecolor($this->width, $this->height);
 				$this->emptyComparisonImage();
 				$characters = $this->testCharacters([]);
-				$ergebniss = Character::toString($characters);
-				if ($ergebniss==='') {
+				$hit = Character::toString($characters);
+				if ($hit === '') {
 					$this->debug->echoString("################ TEILSEQUENZ NICHT GEFUNDEN ###############\n", 1);
 				} else {
-					$this->addToLookUpTable($ergebniss, $md5);
+					$this->addToLookUpTable($hit, $md5);
 				}
 			}
-			$result .= $ergebniss;
+			$result .= $hit;
 		}
 		$end = microtime(true);
 		$length = strlen($result);
 
 		if ($length > 0) {
 			$timeDiff = max(0.001, $end - $start);
-			if ($timeDiff == 0.001) {
+			if ($timeDiff <= 0.001) {
 				$this->debug->echoString(' > ', 3);
 			}
 			$speed = round($length / ($timeDiff));
@@ -376,14 +386,14 @@ class ParseImage
 	 * @param resource $image
 	 * @return resource[]
 	 */
-	private function splitImage($image)
+	private function splitImage($image): array
 	{
 		$width = imagesx($image);
 		$parts = [];
 		$state = true;
 		for ($x = 0, $startX = 0; $x < $width; $x++) {
 			$isEmpty = $this->isEmpty($image, $x);
-			if ($isEmpty != $state) {
+			if ($isEmpty !== $state) {
 				if ($state) {
 					$startX = $x;
 				} else {
@@ -404,7 +414,7 @@ class ParseImage
 	 * @param int $x
 	 * @return bool
 	 */
-	private function isEmpty($image, $x)
+	private function isEmpty($image, int $x): bool
 	{
 		$width = imagesx($image);
 		if ($x < 0 || $x >= $width) {
@@ -412,19 +422,16 @@ class ParseImage
 		}
 		for ($y = 0; $y < $this->height; $y++) {
 			$color = imagecolorat($image, $x, $y);
-			if ($color != 0xFFFFFF) {
+			if ($color !== 0xFFFFFF) {
 				return false;
 			}
 		}
 		return true;
 	}
 
-	/**
-	 * @return bool
-	 */
-	private function emptyComparisonImage()
+	private function emptyComparisonImage(): void
 	{
-		return imagefilledrectangle(
+		imagefilledrectangle(
 			$this->imageForComparison,
 			0, 0,
 			$this->width - 1, $this->height - 1,
@@ -436,7 +443,7 @@ class ParseImage
 	 * @param resource $image
 	 * @return string
 	 */
-	private function imageToMd5($image = null)
+	private function imageToMd5($image = null): string
 	{
 		if (is_null($image)) {
 			$image = $this->imageToParse;
@@ -450,51 +457,50 @@ class ParseImage
 		$cnt = 0;
 		for ($y = 0; $y < $height; $y++) {
 			for ($x = 0; $x < $width; $x++) {
-				$b = $white != imagecolorat($image, $x, $y);
-				$byte = $byte | $b;
+				$b = $white !== imagecolorat($image, $x, $y);
+				$byte |= $b;
 				$cnt++;
 				if ($cnt % 8 === 0) {
 					$chr = chr($byte);
 					$stream .= $chr;
 					$byte = 0;
 				}
-				$byte = $byte << 1;
+				$byte <<= 1;
 			}
 		}
-		$md5 = md5($stream);
-		return $md5;
+		return md5($stream);
 	}
 
 	/**
 	 * @param string $string
 	 * @param string $md5
 	 */
-	private function addToLookUpTable($string, $md5)
+	private function addToLookUpTable(string $string, string $md5): void
 	{
 		$this->debug->echoString("$md5 =:: $string\n", 2);
 		$this->parsedImages[$md5] = $string;
 	}
 
 	/**
-	 * errechnet die Anzahl an Pixeln die nicht übereinstimmen. Falls das komplette
-	 * Bild überprüft wurde wird true zurückgegeben.
+	 * Errechnet die Anzahl an Pixeln die nicht übereinstimmen. Falls das komplette
+	 * Bild überprüft wurde, wird "true" zurückgegeben.
 	 *
-	 * @param integer $maxX
+	 * @param int $maxX
 	 * @return int|true true if done
 	 */
-	private function interpretMismatchPixelsInCurrentArea($maxX)
+	private function interpretMismatchPixelsInCurrentArea(int $maxX)
 	{
 		$errors = 0;
 		for ($y = 0; $y < $this->height; $y++) {
 			for ($x = 0; $x <= $maxX; $x++) {
 				$a = imagecolorat($this->imageForComparison, $x, $y);
 				$b = imagecolorat($this->imageToParse, $x, $y);
-				if ($a != $b) {
+				if ($a !== $b) {
 					$errors++;
 				}
 			}
 		}
-		if (($errors == 0) && ($maxX == ($this->width - 1))) {
+		if (($errors === 0) && ($maxX === ($this->width - 1))) {
 			return true;
 		}
 		return $errors;

@@ -7,20 +7,22 @@
 
 namespace MichaelReetz;
 /**
- * Class Debug
  * @method static Debug getInstance()
  */
 class Debug
 {
 	use Singleton;
 
-	private $verbose = 1;
+	/**
+	 * @var int
+	 */
+	private int $verbose = 1;
 
 	/**
-	 * @param integer $verbose
+	 * @param int $verbose
 	 * @return bool
 	 */
-	private function isVerbose($verbose)
+	private function isVerbose(int $verbose): bool
 	{
 		return $this->verbose > $verbose;
 	}
@@ -31,7 +33,7 @@ class Debug
 	 * @param int $verbose
 	 * @return Debug
 	 */
-	public function echoString($s, $verbose = 1)
+	public function echoString(string $s, int $verbose): self
 	{
 		if ($this->isVerbose($verbose)) {
 			echo $s;
@@ -44,7 +46,7 @@ class Debug
 	 * @param int $verbose
 	 * @return Debug
 	 */
-	public function varDump($mixed, $verbose = 10)
+	public function varDump($mixed, int $verbose = 10): self
 	{
 		if ($this->isVerbose($verbose)) {
 			var_dump($mixed);
@@ -55,7 +57,7 @@ class Debug
 	/**
 	 * increases Verbose level
 	 */
-	public function verbose()
+	public function verbose(): self
 	{
 		$this->verbose++;
 		return $this;

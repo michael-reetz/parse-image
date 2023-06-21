@@ -6,20 +6,18 @@
  */
 
 namespace MichaelReetz;
-/**
- * Class Character
- */
+
 class Character
 {
-	public $character = '';
-	public $width = 0;
+	public string $character = '';
+	public int $width = 0;
 
 	/**
 	 * Candidate constructor.
 	 * @param string $character
 	 * @param int $width
 	 */
-	public function __construct($character, $width)
+	public function __construct(string $character, int $width)
 	{
 		$this->character = $character;
 		$this->width = $width;
@@ -40,20 +38,20 @@ class Character
 	 * @param bool $explain
 	 * @return string
 	 */
-	public static function toString($characters, $explain = false)
+	public static function toString(array $characters, bool $explain = false): string
 	{
 		$result = array_reduce($characters, [self::class, '_toString'], '');
 		$noNope = false;
-		if($explain) {
+		if ($explain) {
 			echo "toString: $result " . ' (' . count($characters) . ') ' .
 				implode(',', array_map(
-						function($a) use (&$noNope){
+						static function($a) use (&$noNope){
 							if($a->character === ''){
 								return str_repeat($a->width < 0 ? '<' : '>', abs($a->width));
-							} else {
-								return $a->character;
 							}
-						}, $characters
+							return $a->character;
+						},
+						$characters
 					)
 				);
 		}
@@ -61,20 +59,20 @@ class Character
 	}
 
 	/**
-	 * @param integer $acc
+	 * @param int $acc
 	 * @param self $cur
-	 * @return integer
+	 * @return int
 	 */
-	private function _calcWidth($acc, $cur)
+	private function _calcWidth(int $acc, Character $cur): int
 	{
 		return $acc + $cur->width;
 	}
 
 	/**
 	 * @param Character[] $characters
-	 * @return integer
+	 * @return int
 	 */
-	public static function calcWidth($characters)
+	public static function calcWidth(array $characters): int
 	{
 		if (empty($characters)){
 			return 0;

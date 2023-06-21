@@ -10,11 +10,13 @@ require 'src/Debug.php';
 require 'src/ParseImage.php';
 require 'src/Character.php';
 
-\MichaelReetz\Debug::getInstance()->verbose()->verbose()->verbose();
+use MichaelReetz\Debug;
+
+Debug::getInstance()->verbose()->verbose()->verbose();
 
 $parseImage = new MichaelReetz\ParseImage();
 
-if ($argc == 1) {
+if ($argc === 1) {
 	$errors = [];
 	foreach (scandir('input') as $file) {
 		$filename = __DIR__ . '/input/' . $file;
@@ -22,7 +24,6 @@ if ($argc == 1) {
 			continue;
 		}
 		try {
-//			echo "\nParse File $filename \n";
 			echo $parseImage->read($filename) . "\n";
 		} catch (Exception $exception) {
 			$errors[] = $exception->getMessage();
@@ -34,7 +35,7 @@ if ($argc == 1) {
 	$filename = $argv[1];
 	try {
 		if (!file_exists($filename)) {
-			throw new Exception('File not there');
+			throw new RuntimeException('File not there');
 		}
 		echo $parseImage->read($filename) . "\n";
 	} catch (Exception $exception) {
